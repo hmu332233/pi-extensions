@@ -39,4 +39,5 @@ pnpm-debug.log*
 tmp/
 coverage/
 
-settings.json
+.pi
+.plan
