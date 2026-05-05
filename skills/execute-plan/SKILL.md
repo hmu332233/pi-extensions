@@ -1,6 +1,6 @@
 ---
 name: execute-plan
-description: 명시적으로 호출되었을 때 기존 plan Markdown을 실제 작업으로 실행합니다. plan을 끝까지 읽고, 필요한 파일만 확인한 뒤 최소 변경으로 구현하며, 검증/후속 탐색/도구 설치/범위 확장은 실행 전 사용자에게 선택지를 제안하고 확인받습니다.
+description: 명시적으로 호출되었을 때 기존 plan Markdown을 실제 작업으로 실행합니다. plan을 끝까지 읽고, 필요한 파일만 확인한 뒤 최소 변경으로 구현하며, 명확하고 저위험인 project-local 검증은 바로 실행하고 그 외 검증/후속 탐색/도구 설치/범위 확장은 확인받습니다.
 ---
 
 # Execute Plan Skill
@@ -9,11 +9,11 @@ This skill is intended for explicit invocation, for example:
 
 - `/skill:execute-plan .plan/2026-...md`
 
-It is an execution workflow for an existing plan document. Bias toward following the plan exactly, making minimal targeted changes, and asking before optional validation or scope expansion.
+It is an execution workflow for an existing plan document. Bias toward following the plan exactly, making minimal targeted changes, running obvious low-risk project-local validation when immediately available, and asking before unclear validation or scope expansion.
 
 ## Primary Outcome
 
-Implement the plan document in the current working directory with the smallest safe set of changes, then report what changed and how validation should proceed.
+Implement the plan document in the current working directory with the smallest safe set of changes, then report what changed, which immediate validation ran, and what validation remains pending if any.
 
 ## Non-Negotiable Rules
 
@@ -21,9 +21,9 @@ Implement the plan document in the current working directory with the smallest s
 2. Do not implement work that is outside the plan unless the user explicitly approves it.
 3. Inspect only files clearly needed to execute the plan.
 4. Do not edit, overwrite, or update the plan document unless the user explicitly asks for progress updates or checklist/status changes.
-5. Treat validation, broad exploration, cleanup, dependency/vendor inspection, tool installation, config changes, and follow-up improvements as separate from implementation.
-6. Before validation or follow-up work, ask for confirmation unless the user already gave explicit permission for the exact action in the current request.
-7. If a next step is unclear, invasive, costly, may modify state, may access the network, may inspect dependency/vendor/generated/cache directories, or may expand scope, stop and ask the user with concise options.
+5. Treat broad exploration, cleanup, dependency/vendor inspection, tool installation, config changes, and follow-up improvements as separate from implementation.
+6. Run validation without asking only when the exact action is obvious, low-risk, project-local, and does not require network access, installation, deep discovery, or likely file/external state changes.
+7. If validation or any next step is unclear, invasive, costly, may modify state, may access the network, may inspect dependency/vendor/generated/cache directories, or may expand scope, stop and ask the user with concise options.
 
 ## Workflow
 
@@ -48,7 +48,7 @@ Before making changes, briefly state the intended implementation scope when usef
 - the plan is non-trivial
 - the request says “그대로” or “exactly”
 - there are risks or tradeoffs in the plan
-- the plan's validation step may require confirmation later
+- the plan's validation step may require a gated decision later
 
 Keep this short. Do not turn it into a new planning phase.
 
@@ -84,40 +84,48 @@ Guidelines:
 - Do not add abstractions, options, or generic frameworks unless the plan explicitly requires them.
 - If implementation reveals the plan is wrong or incomplete, stop and explain the mismatch instead of improvising broadly.
 
-### 5. Validation Confirmation Gate
+### 5. Validation Decision Workflow
 
-After implementation, do not automatically run validation unless the user explicitly authorized the exact validation action in the current request.
+After implementation, run validation immediately only when it is obvious, low-risk, and project-local.
 
-First identify only obvious, low-risk, project-local validation signals, such as:
+Immediate validation is allowed when all of the following are true:
 
-- `package.json` scripts
+- the exact command or check is explicit in the plan or immediately obvious from nearby project-local files
+- it does not require network access, dependency installation, or new tooling
+- it does not require inspecting dependency/vendor/generated/cache/build-output directories
+- it is unlikely to modify files, lockfiles, snapshots, caches, external services, or external state
+- it does not require broad exploration or expand the plan scope
+
+Examples of signals that may identify immediate validation:
+
+- plan document validation notes
+- clearly relevant `package.json` scripts
 - `tsconfig.json` / `jsconfig.json`
 - existing test/lint/build configs
-- README instructions
-- plan document validation notes
+- README instructions that are directly relevant and already reviewed
 
-Then ask the user to choose from concise options.
+If one clear safe validation action exists, run it and report the result.
+
+If multiple plausible validation actions exist, validation appears non-trivial, or no immediate validation path is apparent, do not search deeply just to invent one. Stop and ask the user to choose from concise options.
 
 Example response:
 
 ```text
-구현은 완료했습니다. 검증은 아직 실행하지 않았습니다.
-가능한 검증 옵션은:
-1. 자동 검증 생략, 수동 확인 절차만 안내
+구현은 완료했습니다. 바로 실행해도 안전한 단일 검증 경로는 확정하지 못했습니다.
+가능한 선택지는:
+1. 검증 생략, 수동 확인 절차만 안내
 2. 기존 project-local 명령 실행: <command>
 3. 가벼운 파일/구문 확인만 수행
-4. 임시 도구 설치/네트워크 사용 기반 검증 — 명시 승인 필요
+4. 추가 탐색/도구 설치/네트워크 사용 기반 검증 — 명시 승인 필요
 어떻게 진행할까요?
 ```
-
-If there is no clear validation path, say so and ask. Do not search deeply just to invent one.
 
 ### 6. Prohibited Without Explicit Approval
 
 Do not do any of the following unless the user explicitly approves that specific action:
 
 - install dependencies or run network-based tools
-- run commands likely to modify files, lockfiles, caches outside the workspace, or external state
+- run validation or commands likely to modify files, lockfiles, caches outside the workspace, or external state
 - add validation tooling or project config solely for this task
 - inspect `node_modules`, vendor, generated, cache, or build-output directories for validation discovery
 - read or write files outside the current working directory
@@ -126,7 +134,7 @@ Do not do any of the following unless the user explicitly approves that specific
 
 ### 7. Report Results
 
-After implementation and any user-approved validation, report concisely:
+After implementation and any validation that was run or deferred, report concisely:
 
 - plan file executed
 - files changed
